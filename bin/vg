@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Live ripgrep search; open the selected match in $EDITOR at file:line:col.
+# Usage: vg [initial query]
+set -euo pipefail
+
+pick() {
+  for cmd in "$@"; do
+    command -v "$cmd" >/dev/null 2>&1 && { echo "$cmd"; return 0; }
+  done
+  return 1
+}
+
+command -v rg >/dev/null 2>&1 || { echo "vg: need ripgrep (rg)" >&2; exit 1; }
+# Debian/Ubuntu ships bat as `batcat` to avoid a name clash with another package.
+# shellcheck disable=SC2209 # intentional: storing the command name, not its output
+BAT=$(pick bat batcat) || BAT=cat
+
+RG_CMD='rg --column --line-number --no-heading --color=always --smart-case --'
+
+result=$(
+  fzf --ansi --disabled --query "${*:-}" \
+      --bind "start:reload:$RG_CMD {q}" \
+      --bind "change:reload:sleep 0.1; $RG_CMD {q} || true" \
+      --delimiter : \
+      --preview "$BAT --color=always --highlight-line {2} -- {1}" \
+      --preview-window '+{2}-/2' \
+      --height=100% --layout=reverse
+) || exit 0
+
+[ -n "$result" ] || exit 0
+
+# file:line:col:text -- note this assumes no literal ':' in the file path.
+file=$(cut -d: -f1 <<<"$result")
+line=$(cut -d: -f2 <<<"$result")
+col=$(cut -d: -f3 <<<"$result")
+
+exec "${EDITOR:-nvim}" "+call cursor($line,$col)" -- "$file"

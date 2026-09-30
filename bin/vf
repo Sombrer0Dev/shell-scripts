@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Find a file and open it in $EDITOR (default: nvim).
+# Usage: vf [dir]
+set -euo pipefail
+
+pick() {
+  for cmd in "$@"; do
+    command -v "$cmd" >/dev/null 2>&1 && { echo "$cmd"; return 0; }
+  done
+  return 1
+}
+
+# Debian/Ubuntu ships fd as `fdfind` and bat as `batcat` to avoid name clashes.
+FD=$(pick fd fdfind) || { echo "vf: need fd (Debian/Ubuntu: apt install fd-find)" >&2; exit 1; }
+# shellcheck disable=SC2209 # intentional: storing the command name, not its output
+BAT=$(pick bat batcat) || BAT=cat
+
+file=$("$FD" --type f --hidden --follow --exclude .git . "${1:-.}" |
+  fzf --height=100% --layout=reverse \
+      --preview "$BAT --color=always --style=numbers -- {}") || exit 0
+
+[ -n "$file" ] || exit 0
+exec "${EDITOR:-nvim}" -- "$file"

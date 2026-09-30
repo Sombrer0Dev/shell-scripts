@@ -16,11 +16,15 @@ command -v rg >/dev/null 2>&1 || { echo "vg: need ripgrep (rg)" >&2; exit 1; }
 BAT=$(pick bat batcat) || BAT=cat
 
 RG_CMD='rg --column --line-number --no-heading --color=always --smart-case --'
+# An empty pattern makes ripgrep match every line of every file, which is
+# slow outside a git repo (no .gitignore to prune the walk) and pointless
+# either way -- only actually search once there's a query to search for.
+RELOAD="test -n {q} && $RG_CMD {q} || true"
 
 result=$(
   fzf --ansi --disabled --query "${*:-}" \
-      --bind "start:reload:$RG_CMD {q}" \
-      --bind "change:reload:sleep 0.1; $RG_CMD {q} || true" \
+      --bind "start:reload:$RELOAD" \
+      --bind "change:reload:sleep 0.1; $RELOAD" \
       --delimiter : \
       --preview "$BAT --color=always --highlight-line {2} -- {1}" \
       --preview-window '+{2}-/2' \

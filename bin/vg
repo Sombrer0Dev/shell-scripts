@@ -19,20 +19,41 @@ RG_CMD='rg --column --line-number --no-heading --color=always --smart-case --'
 # An empty pattern makes ripgrep match every line of every file, which is
 # slow outside a git repo (no .gitignore to prune the walk) and pointless
 # either way -- only actually search once there's a query to search for.
-RELOAD="test -n {q} && $RG_CMD {q} || true"
+RELOAD_CMD="test -n {q} && $RG_CMD {q} || true"
+
+# fzf-lua-style ripgrep/fzf toggle, adapted from fzf's own ADVANCED.md
+# ("Switching between Ripgrep mode and fzf mode"). This needs two distinct
+# keys, not one self-toggling key: `--disabled` only controls whether fzf's
+# own local fuzzy matching runs -- it does NOT stop our change:reload
+# binding from firing, so a single toggle key can't just flip a mode flag,
+# it has to actually unbind/rebind the `change` event itself, and fzf's
+# static --bind syntax can't branch one key's action two different ways.
+# Each key unbinds itself and rebinds the other.
+RG_QUERY_FILE=$(mktemp)
+FILTER_QUERY_FILE=$(mktemp)
+trap 'rm -f "$RG_QUERY_FILE" "$FILTER_QUERY_FILE"' EXIT
+
+FILTER_HEADER='fzf-filter mode -- ctrl-r: back to rg-search'
+RG_HEADER='rg-search mode -- ctrl-f: filter these results with fzf'
+
+TO_FILTER="unbind(change,ctrl-f)+change-prompt(2. filter> )+change-header($FILTER_HEADER)+enable-search+rebind(ctrl-r)+transform-query(printf '%s' {q} > $RG_QUERY_FILE; cat $FILTER_QUERY_FILE 2>/dev/null)"
+TO_RG="unbind(ctrl-r)+change-prompt(1. rg> )+change-header($RG_HEADER)+disable-search+reload($RG_CMD {q} || true)+rebind(change,ctrl-f)+transform-query(printf '%s' {q} > $FILTER_QUERY_FILE; cat $RG_QUERY_FILE 2>/dev/null)"
 
 result=$(
   fzf --ansi --disabled --query "${*:-}" \
-      --bind "start:reload:$RELOAD" \
-      --bind "change:reload:sleep 0.1; $RELOAD" \
-      --bind "ctrl-g:toggle-search" \
-      --header "ctrl-g: toggle rg search / fzf filter" \
+      --bind "start:reload($RELOAD_CMD)+unbind(ctrl-r)" \
+      --bind "change:reload:sleep 0.1; $RELOAD_CMD" \
+      --bind "ctrl-f:$TO_FILTER" \
+      --bind "ctrl-r:$TO_RG" \
+      --prompt '1. rg> ' \
+      --header "$RG_HEADER" \
       --delimiter : \
       --preview "$BAT --color=always --highlight-line {2} -- {1}" \
       --preview-window '+{2}-/2' \
       --height=100% --layout=reverse
 ) || exit 0
 
+rm -f "$RG_QUERY_FILE" "$FILTER_QUERY_FILE"
 [ -n "$result" ] || exit 0
 
 # file:line:col:text -- note this assumes no literal ':' in the file path.
@@ -40,4 +61,8 @@ file=$(cut -d: -f1 <<<"$result")
 line=$(cut -d: -f2 <<<"$result")
 col=$(cut -d: -f3 <<<"$result")
 
-exec "${EDITOR:-nvim}" "+call cursor($line,$col)" -- "$file"
+# Called from a zsh zle widget (see shell-scripts' README / nix-config's
+# shell.nix), stdin here isn't necessarily the controlling terminal --
+# fzf doesn't care (it opens /dev/tty itself for its UI) but a plain
+# editor does, and silently misbehaves or errors without it.
+exec "${EDITOR:-nvim}" "+call cursor($line,$col)" -- "$file" < /dev/tty > /dev/tty

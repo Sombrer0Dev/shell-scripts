@@ -15,7 +15,12 @@ FD=$(pick fd fdfind) || { echo "vf: need fd (Debian/Ubuntu: apt install fd-find)
 # shellcheck disable=SC2209 # intentional: storing the command name, not its output
 BAT=$(pick bat batcat) || BAT=cat
 
-file=$("$FD" --type f --hidden --follow --exclude .git . "${1:-.}" |
+# fzf exits as soon as you press Enter, closing its stdin -- if fd is still
+# walking the tree at that instant it gets SIGPIPE, and under `pipefail`
+# that would poison the whole pipeline's exit status even though fzf
+# already produced a selection. The `|| true` swallows that false failure
+# without hiding a real one from fzf (an actual cancel/Esc/no-match).
+file=$( ("$FD" --type f --hidden --follow --exclude .git . "${1:-.}" || true) |
   fzf --height=100% --layout=reverse \
       --preview "$BAT --color=always --style=numbers -- {}") || exit 0
 

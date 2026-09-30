@@ -25,6 +25,8 @@ result=$(
   fzf --ansi --disabled --query "${*:-}" \
       --bind "start:reload:$RELOAD" \
       --bind "change:reload:sleep 0.1; $RELOAD" \
+      --bind "ctrl-g:toggle-search" \
+      --header "ctrl-g: toggle rg search / fzf filter" \
       --delimiter : \
       --preview "$BAT --color=always --highlight-line {2} -- {1}" \
       --preview-window '+{2}-/2' \

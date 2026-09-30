@@ -25,4 +25,8 @@ file=$( ("$FD" --type f --hidden --follow --exclude .git . "${1:-.}" || true) |
       --preview "$BAT --color=always --style=numbers -- {}") || exit 0
 
 [ -n "$file" ] || exit 0
-exec "${EDITOR:-nvim}" -- "$file"
+# Called from a zsh zle widget (see shell-scripts' README / nix-config's
+# shell.nix), stdin here isn't necessarily the controlling terminal --
+# fzf doesn't care (it opens /dev/tty itself for its UI) but a plain
+# editor does, and silently misbehaves or errors without it.
+exec "${EDITOR:-nvim}" -- "$file" < /dev/tty > /dev/tty
